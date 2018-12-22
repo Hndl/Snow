@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html>
+	<title>Code Example: Snowstorm</title>
+	
+	
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/0.6.0/p5.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/0.7.2/addons/p5.dom.min.js"></script>
+	
+	<script type="text/javascript">
+		
+		const COLOR_BG = 0;
+		var canvas = null;	
+		var snowStorm = null;
+		var textureSheet = null;
+	
+
+		/**
+		 * Class: Baseflake
+		 *
+		 *
+		 */
+		class Baseflake {
+
+			constructor (_imgOfTextures, _imgW, _imgH) {
+			
+				this.MAXFLAKES = 800;
+				this.FLAKE_X_FLOAT = 0;//0.05;
+				this.FLAKE_Y_STARTPOINT_MIN  = -200;
+				this.FLAKE_Y_STARTPOINT_MAX  = -600;
+				this.FLAKE_SIZE_MIN = 4;
+				this.FLAKE_SIZE_MAX = 32;
+				this.FLAKE_SPEED_MIN = 0.005;
+				this.FLAKE_SPEED_MAX = 0.01;
+				this.FLAKE_SPIN = 0.02;
+				this.GRAVITY = new createVector(0,0.1);
+				this.SQUARED = 2;
+				this.GAUSSIANSCALEFACTOR = 1.6;
+				this.GAUSSIAN_METHOD = false;
+				this.FLAKE_SIZE_GEN_RAND_MIN = 0.5;
+				this.FLAKE_SIZE_GEN_RAND_MAX = 1;
+				this.FLAKE_SIZE_GEN_POW = 3;
+				this.FLAKE_SIZE_GEN_SCALE = 32;
+				this.SCREEN_LEFT_EDGE = 0;
+				this.SCREEN_TOP_EDGE = 0;
+				this.img = null;
+				this.textureSheet = _imgOfTextures;
+				this.eachTextureWidth = _imgW;
+				this.eachTextureHeight = _imgH;
+				this.flakeTextures = [];
+				this.WIND_SCALE = 0.1;
+				this.WIND_STEP  = 0.01;
+				this.cutUpTextures();
+			}
+
+			cutUpTextures(){
+			 	if ( !this.textureSheet)
+			 		return;
+				
+				console.log(`snowflake textures. ${this.textureSheet.width}x${this.textureSheet.height} cut ${this.eachTextureHeight}x${this.eachTextureWidth}`);
+			
+				for ( let x = 0 ; x < this.textureSheet.width ; x+=this.eachTextureWidth){
+				
+					for ( let y = 0 ; y < this.textureSheet.height ; y+=this.eachTextureHeight){
+				
+						let img = this.textureSheet.get(x,y,this.eachTextureWidth,this.eachTextureHeight);
+						this.flakeTextures.push(img);
+				
+					}
+				}
+				console.log(`snowflake textures generated ${this.flakeTextures.length} hasLoaded reporting:${this.haveTexturesLoaded()}`);
+			}
+
+			haveTexturesLoaded() {
+				return ( this.flakeTextures.length > 0);
+			}
+			getRandomTexture() {
+				return ( this.flakeTextures[ floor(random(0,this.flakeTextures.length))] );
+			}
+
+
+		}
+
+		/**
+		 * Class: Snowflake
+		 *
+		 *
+		 */
+		class Snowflake extends Baseflake {
+
+			constructor (_w, _h, _imgTexture) {
+
+				super();				
+				this.maxWidth = _w;
+				this.maxHeight = _h;
+				this.position = null ; 
+				this.velocity = null ;
+				this.reset();
+				this.texture = _imgTexture;
+				this.angle = random(0, TWO_PI);
+				this.direction = random(0,1)>0.5?0:1; 	// TODO constants
+				this.xOff = 0;							// used to represent sway motion. see update function.
+				this.wind ;
+			}
+			
+			reset () {
+				
+				this.position = new createVector( floor(random(this.SCREEN_LEFT_EDGE,this.maxWidth)), random(this.FLAKE_Y_STARTPOINT_MIN,this.FLAKE_Y_STARTPOINT_MAX) );
+				this.velocity = new createVector(0,0);
+
+				if ( this.GAUSSIAN_METHOD )
+					this.radius = Math.pow((abs(randomGaussian() * this.GAUSSIANSCALEFACTOR)), this.SQUARED);
+				else
+					this.radius = (Math.pow(random(this.FLAKE_SIZE_GEN_MIN, this.FLAKE_SIZE_GEN_MAX),this.FLAKE_SIZE_GEN_POW))*this.FLAKE_SIZE_GEN_SCALE;
+
+				this.radius = constrain(this.radius, this.FLAKE_SIZE_MIN, this.FLAKE_SIZE_MAX);
+				this.offScreen = false;
+				this.gravity = map(this.radius,
+								this.FLAKE_SIZE_MIN,this.FLAKE_SIZE_MAX,
+								this.FLAKE_SPEED_MIN,this.FLAKE_SPEED_MAX);
+
+				this.accelaration = new createVector( 0, this.gravity);
+
+			}
+
+			edges() {
+
+				if ( this.position.x > this.maxWidth )
+					this.position.x = 0;
+				
+				if ( this.position.x < 0  ) 
+					this.position.x =  this.maxWidth;
+				
+				if ( this.position.y > this.maxHeight) {
+				
+					this.offScreen = true;
+					this.reset();
+				
+				}		
+			}
+
+			isOffScreen() { return ( this.offScreen); }
+
+			applyForces( _force ) {
+				this.accelaration.add ( _force );
+			}
+
+			update(  ) {
+				
+				this.xOff = sin(this.angle)* this.radius; 	// sin returns between -1 and 1. Then magnify based on flakes radius to increase the effect
+
+				this.velocity.add(this.accelaration);
+				this.velocity.limit(3);
+				
+				this.position.add(this.velocity);	
+				this.angle += this.direction === 0 ? -this.FLAKE_SPIN : this.FLAKE_SPIN ; 
+				this.edges();
+				
+				this.accelaration.mult(0); // clear;
+
+				this.accelaration = new createVector( 0, this.gravity); // reset acce
+			}
+
+			draw (_imgTexture) {
+
+				push();
+		
+				if ( this.texture ) {
+					imageMode(CENTER);
+					translate(this.position.x + this.xOff, this.position.y);
+					rotate(this.angle);
+					image(this.texture,0,0,this.radius, this.radius);
+				
+				} else { 
+					stroke(255);
+					strokeWeight(this.radius*2);
+					point(this.position.x, this.position.y);
+				
+				}
+				
+				pop();
+			}
+
+		}
+
+		/**
+		 * Class: SnowStorm
+		 *
+		 *
+		 */
+		class SnowStorm extends Baseflake {
+
+			constructor ( _imgOfTextures, _imgW, _imgH){
+
+				super(_imgOfTextures, _imgW, _imgH);	
+				this.flakes = [];	
+				this.xWind = 0;
+				this.ground_yoff = 0.0; 
+				this.ground_xoff = 0.0;
+				this.groundheight = 100;
+				this.groundIncrement = 0.1;
+				this.maxgroundheight = 350;
+				this.mingroundheight = 50;
+				
+			}
+
+
+			generateFlakes () {
+
+				for ( let i = 0 ; i < this.MAXFLAKES ; i++ ) {
+
+					let imgTexture = this.haveTexturesLoaded() ? this.getRandomTexture() : null;
+					let snowflake = new Snowflake( width,height, imgTexture );	
+					this.flakes.push(snowflake);
+				
+				}				
+			}
+
+
+			makeWind () {
+				let windAngle = noise( this.xWind) * TWO_PI;
+				let wind = p5.Vector.fromAngle(windAngle);
+				wind.mult(5);
+				this.xWind +=0.001;
+				return ( this.wind );
+			}
+
+			renderGround() {
+				//Draw the ground
+				push();
+				fill(255);
+				beginShape(); 
+  				for (var x = 0; x <= width; x += 10) {
+	    			var y = map(noise(this.ground_xoff, this.ground_yoff), 0, 1, height-this.groundheight ,height-10);
+					vertex(x, y); 
+	    			this.ground_xoff += 0.05;
+  				}
+				this.ground_yoff += 0.001;
+				this.ground_xoff = 0;
+				vertex(width, height);
+				vertex(0, height);
+				endShape(CLOSE);
+				pop();
+				this.groundheight +=this.groundIncrement;
+				if ( this.groundheight > this.maxgroundheight){
+					this.groundIncrement=-this.groundIncrement;
+				}
+				if ( this.groundheight < this.mingroundheight) {
+					this.groundIncrement = this.groundIncrement*-1;
+				}
+			
+			}
+			draw( _imgTexture) {
+
+				this.renderGround();	
+				
+				for (let i = 0 ; i < this.flakes.length ; i++){
+
+					let snowflake = this.flakes[i];
+
+					if ( !snowflake.isOffScreen() ){
+						snowflake.applyForces ( this.makeWind() );
+						snowflake.update(  );
+						snowflake.draw(_imgTexture);
+					
+					} 
+				}
+			}
+		}
+
+
+
+		function preload(){
+			textureSheet = loadImage( 'flakes32.png', 
+								()=> {console.log(`load snowflake textures. ${textureSheet.width}x${textureSheet.height}`);}, //Success
+								()=> {console.log('failed to load snowflake textures');}
+								); //failure
+			
+		}
+
+		function setup() {
+    
+ 			canvas = createCanvas(window.innerWidth, window.innerHeight);
+ 			snowStorm = new SnowStorm ( textureSheet, 32,32 );
+
+ 			if ( snowStorm)
+ 				snowStorm.generateFlakes();
+ 		}
+
+		function draw() {
+
+			background(COLOR_BG);
+			
+			if ( snowStorm) {
+				snowStorm.draw() ;
+			}					
+		}
+		
+	
+	</script>
+<body>
+
+</body>
+</html>
